@@ -1,2 +1,5 @@
-opencv-python
+Flask
+Werkzeug
+gunicorn
+opencv-python-headless
 mediapipe
