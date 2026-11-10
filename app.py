@@ -2,6 +2,8 @@
 import os
 import sqlite3
 from functools import wraps
+import cv2
+import numpy as np
 
 from flask import (
     Flask, render_template, request,
@@ -133,7 +135,7 @@ def signup():
 
             try:
 
-                hashed_password = generate_password_hash(password)
+                hashed_password = generate_password_hash(password, method="pbkdf2:sha256")
 
                 connection.execute(
                     """
@@ -225,14 +227,60 @@ def dashboard():
 # CAMERA STREAM
 # ==========================================
 
-@app.route("/video_feed")
+@app.route("/process_frame", methods=["POST"])
 @login_required
-def video_feed():
+def process_frame():
 
-    return Response(
-        camera.generate_frames(),
-        mimetype="multipart/x-mixed-replace; boundary=frame"
+    if "frame" not in request.files:
+        return jsonify({
+            "error": "No frame received"
+        }), 400
+
+    file = request.files["frame"]
+
+    image_bytes = file.read()
+
+    np_array = np.frombuffer(
+        image_bytes,
+        np.uint8
     )
+
+    frame = cv2.imdecode(
+        np_array,
+        cv2.IMREAD_COLOR
+    )
+
+    if frame is None:
+        return jsonify({
+            "error": "Invalid image"
+        }), 400
+
+    processed_frame = camera.process_frame(
+        frame
+    )
+
+    if processed_frame is None:
+        return jsonify({
+            "error": camera.camera_error
+            or "Frame processing failed"
+        }), 500
+
+    import base64
+
+    image_base64 = base64.b64encode(
+        processed_frame
+    ).decode("utf-8")
+
+    stats = camera.get_stats()
+
+    return jsonify({
+        "image": image_base64,
+        "gesture": stats["gesture"],
+        "hands": stats["hands"],
+        "fps": stats["fps"],
+        "active": stats["active"],
+        "history": stats["history"]
+    })
 
 
 # ==========================================

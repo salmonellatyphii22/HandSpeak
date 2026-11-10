@@ -12,6 +12,14 @@ class GestureCamera:
         # MediaPipe setup
         self.mp_hands = mp.solutions.hands
         self.mp_draw = mp.solutions.drawing_utils
+        self.hands = self.mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=2,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+
+        self.previous_time = time.time()
 
         # Gesture information
         self.history = deque(maxlen=8)
@@ -200,9 +208,144 @@ class GestureCamera:
     # DASHBOARD STATISTICS
     # ==========================================
 
+        # ==========================================
+    # PROCESS BROWSER CAMERA FRAME
+    # ==========================================
+
+    def process_frame(self, frame):
+
+        try:
+            frame = cv2.flip(frame, 1)
+            frame = cv2.resize(frame, (960, 540))
+
+            rgb = cv2.cvtColor(
+                frame,
+                cv2.COLOR_BGR2RGB
+            )
+
+            results = self.hands.process(rgb)
+
+            detected_gesture = "NO GESTURE"
+            hand_count = 0
+
+            # Hand detection
+            if results.multi_hand_landmarks:
+
+                hand_count = len(
+                    results.multi_hand_landmarks
+                )
+
+                for hand_landmarks in results.multi_hand_landmarks:
+
+                    lm_list = hand_landmarks.landmark
+
+                    hand_gesture = self.detect_gesture(
+                        lm_list
+                    )
+
+                    if (
+                        detected_gesture == "NO GESTURE"
+                        and hand_gesture != "NO GESTURE"
+                    ):
+                        detected_gesture = hand_gesture
+
+                    self.mp_draw.draw_landmarks(
+                        frame,
+                        hand_landmarks,
+                        self.mp_hands.HAND_CONNECTIONS
+                    )
+
+            # FPS
+            current_time = time.time()
+
+            fps = 1 / max(
+                current_time - self.previous_time,
+                0.001
+            )
+
+            self.previous_time = current_time
+
+            # Update history
+            if detected_gesture != "NO GESTURE":
+                self.add_detection(
+                    detected_gesture
+                )
+
+            # Update statistics
+            with self.lock:
+
+                self.current_gesture = (
+                    detected_gesture
+                )
+
+                self.hand_count = hand_count
+
+                self.fps = fps
+
+                self.camera_active = True
+
+                self.camera_error = None
+
+            # Overlay
+            cv2.rectangle(
+                frame,
+                (0, 0),
+                (960, 55),
+                (28, 20, 42),
+                -1
+            )
+
+            cv2.putText(
+                frame,
+                "HANDSPEAK | LIVE DETECTION",
+                (20, 35),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (220, 190, 255),
+                2
+            )
+
+            cv2.putText(
+                frame,
+                detected_gesture,
+                (25, 505),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (170, 255, 190),
+                2
+            )
+
+            # Encode processed frame
+            success, buffer = cv2.imencode(
+                ".jpg",
+                frame,
+                [
+                    cv2.IMWRITE_JPEG_QUALITY,
+                    85
+                ]
+            )
+
+            if not success:
+                return None
+
+            return buffer.tobytes()
+
+        except Exception as error:
+
+            with self.lock:
+                self.camera_error = str(error)
+                self.camera_active = False
+
+            return None
+
+    # ==========================================
+    # DASHBOARD STATISTICS
+    # ==========================================
+
     def get_stats(self):
 
         with self.lock:
+
             return {
                 "gesture": self.current_gesture,
                 "hands": self.hand_count,
@@ -211,185 +354,3 @@ class GestureCamera:
                 "error": self.camera_error,
                 "history": list(self.history)
             }
-
-    # ==========================================
-    # CAMERA STREAM
-    # ==========================================
-
-    def generate_frames(self):
-
-        # Prevent multiple webcam streams
-        if not self.stream_lock.acquire(blocking=False):
-
-            with self.lock:
-                self.camera_error = "Camera is already in use."
-
-            return
-
-        cap = None
-        hands = None
-
-        try:
-            # Open webcam
-            cap = cv2.VideoCapture(0)
-
-            if not cap.isOpened():
-
-                with self.lock:
-                    self.camera_active = False
-                    self.camera_error = "Could not open webcam."
-
-                return
-
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)
-
-            # Initialize MediaPipe
-            hands = self.mp_hands.Hands(
-                static_image_mode=False,
-                max_num_hands=2,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
-            )
-
-            previous_time = time.time()
-
-            with self.lock:
-                self.camera_active = True
-                self.camera_error = None
-
-            # Main camera loop
-            while True:
-
-                ret, frame = cap.read()
-
-                if not ret:
-                    with self.lock:
-                        self.camera_error = "Failed to capture camera frame."
-                    break
-
-                frame = cv2.flip(frame, 1)
-                frame = cv2.resize(frame, (960, 540))
-
-                rgb = cv2.cvtColor(
-                    frame,
-                    cv2.COLOR_BGR2RGB
-                )
-
-                results = hands.process(rgb)
-
-                detected_gesture = "NO GESTURE"
-                hand_count = 0
-
-                # Hand detection
-                if results.multi_hand_landmarks:
-
-                    hand_count = len(results.multi_hand_landmarks)
-
-                    for hand_landmarks in results.multi_hand_landmarks:
-
-                        lm_list = hand_landmarks.landmark
-
-                        hand_gesture = self.detect_gesture(lm_list)
-
-                        if (
-                            detected_gesture == "NO GESTURE"
-                            and hand_gesture != "NO GESTURE"
-                        ):
-                            detected_gesture = hand_gesture
-
-                        self.mp_draw.draw_landmarks(
-                            frame,
-                            hand_landmarks,
-                            self.mp_hands.HAND_CONNECTIONS
-                        )
-
-                # FPS calculation
-                current_time = time.time()
-
-                fps = 1 / max(
-                    current_time - previous_time,
-                    0.001
-                )
-
-                previous_time = current_time
-
-                # Update history
-                if detected_gesture != "NO GESTURE":
-                    self.add_detection(detected_gesture)
-
-                # Update dashboard values
-                with self.lock:
-                    self.current_gesture = detected_gesture
-                    self.hand_count = hand_count
-                    self.fps = fps
-                    self.camera_active = True
-
-                # Camera overlay
-                cv2.rectangle(
-                    frame,
-                    (0, 0),
-                    (960, 55),
-                    (28, 20, 42),
-                    -1
-                )
-
-                cv2.putText(
-                    frame,
-                    "HANDSPEAK | LIVE DETECTION",
-                    (20, 35),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (220, 190, 255),
-                    2
-                )
-
-                cv2.putText(
-                    frame,
-                    detected_gesture,
-                    (25, 505),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (170, 255, 190),
-                    2
-                )
-
-                # Encode frame as JPEG
-                success, buffer = cv2.imencode(
-                    ".jpg",
-                    frame,
-                    [cv2.IMWRITE_JPEG_QUALITY, 85]
-                )
-
-                if not success:
-                    continue
-
-                frame_bytes = buffer.tobytes()
-
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n"
-                    + frame_bytes
-                    + b"\r\n"
-                )
-
-        except Exception as error:
-
-            with self.lock:
-                self.camera_error = str(error)
-                self.camera_active = False
-
-        finally:
-
-            with self.lock:
-                self.camera_active = False
-                self.current_gesture = "NO GESTURE"
-                self.hand_count = 0
-
-            if hands is not None:
-                hands.close()
-
-            if cap is not None:
-                cap.release()
-
-            self.stream_lock.release()

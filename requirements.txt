@@ -3,3 +3,4 @@ Werkzeug
 gunicorn
 opencv-python-headless
 mediapipe
+numpy

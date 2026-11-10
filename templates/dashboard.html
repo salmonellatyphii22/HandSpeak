@@ -149,11 +149,26 @@
 
                     <div class="camera-frame">
 
+                        <video
+                            id="webcam"
+                            autoplay
+                            playsinline
+                            muted
+                            style="display: none;"
+                        ></video>
+
                         <img
-                            src="{{ url_for('video_feed') }}"
+                            src=""
                             alt="Live hand gesture camera feed"
                             id="camera-feed"
                         >
+
+                        <canvas
+                            id="camera-canvas"
+                            width="960"
+                            height="540"
+                            style="display: none;"
+                        ></canvas>
 
                         <div
                             class="camera-overlay"
