@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const canvas =
         document.getElementById("camera-canvas");
 
-    if (!gestureElement) return;
+    if (!gestureElement || !webcam || !canvas) return;
 
     const ctx =
         canvas.getContext("2d");
@@ -152,22 +152,46 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
 
+    let streamRef = null;
+    let isRunning = true;
+
+
     async function startCamera() {
 
         try {
 
+            // Keep <video> painted at near-zero opacity so browsers never
+            // pause decoding and return black frames after ~2 seconds
+            webcam.style.display = "block";
+            webcam.style.position = "fixed";
+            webcam.style.bottom = "0";
+            webcam.style.right = "0";
+            webcam.style.width = "160px";
+            webcam.style.height = "90px";
+            webcam.style.opacity = "0.01";
+            webcam.style.pointerEvents = "none";
+            webcam.style.zIndex = "-1";
+
             const stream =
                 await navigator.mediaDevices.getUserMedia({
                     video: {
-                        width: 960,
-                        height: 540,
+                        width: { ideal: 640 },
+                        height: { ideal: 360 },
                         facingMode: "user"
                     },
                     audio: false
                 });
 
-            webcam.srcObject =
-                stream;
+            streamRef = stream;
+            webcam.srcObject = stream;
+
+            await new Promise(resolve => {
+                if (webcam.readyState >= 1) {
+                    resolve();
+                } else {
+                    webcam.onloadedmetadata = () => resolve();
+                }
+            });
 
             await webcam.play();
 
@@ -208,19 +232,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function processFrames() {
 
+        if (!isRunning) return;
+
+        if (webcam.paused) {
+            webcam.play().catch(() => {});
+        }
+
         if (
             processing ||
-            webcam.readyState < 2
+            webcam.readyState < 2 ||
+            webcam.videoWidth === 0
         ) {
-            requestAnimationFrame(
-                processFrames
-            );
+            setTimeout(processFrames, 100);
             return;
         }
 
         processing = true;
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(
+            () => controller.abort(),
+            8000
+        );
+
         try {
+
+            canvas.width = 480;
+            canvas.height = 270;
 
             ctx.drawImage(
                 webcam,
@@ -236,10 +274,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     canvas.toBlob(
                         resolve,
                         "image/jpeg",
-                        0.75
+                        0.7
                     );
 
                 });
+
+            if (!blob || blob.size === 0) {
+                throw new Error("Empty camera frame.");
+            }
 
             const formData =
                 new FormData();
@@ -255,9 +297,17 @@ document.addEventListener("DOMContentLoaded", () => {
                     "/process_frame",
                     {
                         method: "POST",
-                        body: formData
+                        body: formData,
+                        signal: controller.signal
                     }
                 );
+
+            clearTimeout(timeoutId);
+
+            if (response.redirected || response.status === 401) {
+                window.location.href = "/login";
+                return;
+            }
 
             if (!response.ok) {
                 throw new Error(
@@ -270,7 +320,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             updateUI(data);
 
-            if (data.image) {
+            if (data.image && data.image.length > 100) {
+
+                cameraFeed.style.display = "block";
 
                 cameraFeed.src =
                     "data:image/jpeg;base64," +
@@ -279,10 +331,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         } catch (error) {
 
+            clearTimeout(timeoutId);
             console.error(error);
 
             cameraStatus.textContent =
-                "Processing error";
+                "Reconnecting...";
 
             statusDot.classList.add(
                 "offline"
@@ -292,14 +345,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
             processing = false;
 
-            setTimeout(
-                () => requestAnimationFrame(
-                    processFrames
-                ),
-                100
-            );
+            if (isRunning) {
+                setTimeout(
+                    processFrames,
+                    120
+                );
+            }
         }
     }
+
+
+    window.addEventListener("beforeunload", () => {
+        isRunning = false;
+        if (streamRef) {
+            streamRef.getTracks().forEach(track => track.stop());
+        }
+    });
 
 
     startCamera();
