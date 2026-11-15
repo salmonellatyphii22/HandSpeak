@@ -1,6 +1,5 @@
 Flask
-Werkzeug
 gunicorn
-opencv-python-headless
 mediapipe==0.10.21
-numpy
+opencv-python-headless
+numpy<2

@@ -1,5 +1,12 @@
 import os
+
+# Configure writable temp cache before MediaPipe/Matplotlib loads
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+
+import base64
 import sqlite3
+import threading
 import traceback
 from functools import wraps
 import cv2
@@ -14,8 +21,6 @@ from werkzeug.security import (
     generate_password_hash,
     check_password_hash
 )
-
-from main import GestureCamera
 
 
 app = Flask(__name__)
@@ -69,7 +74,22 @@ def handle_exception(e):
     return f"<pre>{traceback.format_exc()}</pre>", 500
 
 
-camera = GestureCamera()
+# ==========================================
+# LAZY CAMERA INITIALIZATION
+# ==========================================
+
+_camera = None
+_camera_lock = threading.Lock()
+
+
+def get_camera():
+    global _camera
+    if _camera is None:
+        with _camera_lock:
+            if _camera is None:
+                from main import GestureCamera
+                _camera = GestureCamera()
+    return _camera
 
 
 # ==========================================
@@ -260,23 +280,23 @@ def process_frame():
             "error": "Invalid image"
         }), 400
 
-    processed_frame = camera.process_frame(
+    cam = get_camera()
+
+    processed_frame = cam.process_frame(
         frame
     )
 
     if processed_frame is None:
         return jsonify({
-            "error": camera.camera_error
+            "error": cam.camera_error
             or "Frame processing failed"
         }), 500
-
-    import base64
 
     image_base64 = base64.b64encode(
         processed_frame
     ).decode("utf-8")
 
-    stats = camera.get_stats()
+    stats = cam.get_stats()
 
     return jsonify({
         "image": image_base64,
@@ -296,7 +316,8 @@ def process_frame():
 @login_required
 def stats():
 
-    return jsonify(camera.get_stats())
+    cam = get_camera()
+    return jsonify(cam.get_stats())
 
 
 # ==========================================
