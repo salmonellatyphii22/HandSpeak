@@ -1,6 +1,6 @@
-
 import os
 import sqlite3
+import traceback
 from functools import wraps
 import cv2
 import numpy as np
@@ -19,41 +19,32 @@ from main import GestureCamera
 
 
 app = Flask(__name__)
-
-app.secret_key = os.environ.get(
-    "SECRET_KEY",
-    "handspeak-local-development-key-change-before-deployment"
-)
+app.secret_key = os.environ.get("SECRET_KEY", "handspeak-prod-secret-key")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax"
 )
 
+
+# ==========================================
+# DATABASE (TOP-LEVEL INITIALIZATION)
+# ==========================================
+
 DATABASE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "users.db"
 )
 
-camera = GestureCamera()
-
-
-# ==========================================
-# DATABASE
-# ==========================================
 
 def get_db():
-
     connection = sqlite3.connect(DATABASE)
     connection.row_factory = sqlite3.Row
-
     return connection
 
 
 def init_db():
-
     connection = get_db()
-
     connection.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,9 +53,23 @@ def init_db():
             password TEXT NOT NULL
         )
     """)
-
     connection.commit()
     connection.close()
+
+
+init_db()
+
+
+# ==========================================
+# TEMPORARY DEBUG HANDLER (REMOVE AFTER FIXING)
+# ==========================================
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return f"<pre>{traceback.format_exc()}</pre>", 500
+
+
+camera = GestureCamera()
 
 
 # ==========================================
@@ -315,11 +320,11 @@ def logout():
 
 if __name__ == "__main__":
 
-    init_db()
+    port = int(os.environ.get("PORT", 5000))
 
     app.run(
-        host="127.0.0.1",
-        port=5000,
+        host="0.0.0.0",
+        port=port,
         debug=False,
         threaded=True
     )

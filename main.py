@@ -1,4 +1,3 @@
-
 import cv2
 import mediapipe as mp
 import time
@@ -205,10 +204,6 @@ class GestureCamera:
         return gesture
 
     # ==========================================
-    # DASHBOARD STATISTICS
-    # ==========================================
-
-        # ==========================================
     # PROCESS BROWSER CAMERA FRAME
     # ==========================================
 
@@ -216,14 +211,16 @@ class GestureCamera:
 
         try:
             frame = cv2.flip(frame, 1)
-            frame = cv2.resize(frame, (960, 540))
+            frame = cv2.resize(frame, (640, 360))
 
             rgb = cv2.cvtColor(
                 frame,
                 cv2.COLOR_BGR2RGB
             )
 
-            results = self.hands.process(rgb)
+            # Lock MediaPipe graph so overlapping HTTP requests don't crash it
+            with self.stream_lock:
+                results = self.hands.process(rgb)
 
             detected_gesture = "NO GESTURE"
             hand_count = 0
@@ -286,11 +283,11 @@ class GestureCamera:
 
                 self.camera_error = None
 
-            # Overlay
+            # Overlay (scaled to 640x360)
             cv2.rectangle(
                 frame,
                 (0, 0),
-                (960, 55),
+                (640, 42),
                 (28, 20, 42),
                 -1
             )
@@ -298,9 +295,9 @@ class GestureCamera:
             cv2.putText(
                 frame,
                 "HANDSPEAK | LIVE DETECTION",
-                (20, 35),
+                (15, 27),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
+                0.65,
                 (220, 190, 255),
                 2
             )
@@ -308,9 +305,9 @@ class GestureCamera:
             cv2.putText(
                 frame,
                 detected_gesture,
-                (25, 505),
+                (18, 335),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1,
+                0.85,
                 (170, 255, 190),
                 2
             )
@@ -321,7 +318,7 @@ class GestureCamera:
                 frame,
                 [
                     cv2.IMWRITE_JPEG_QUALITY,
-                    85
+                    80
                 ]
             )
 
