@@ -7,7 +7,7 @@
     <title>Dashboard | HandSpeak</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='script.js', v='2') }}" defer></script>
 </head>
 
 <body class="dashboard-page">
@@ -146,20 +146,21 @@
 
                     </div>
 
-                    <div class="camera-frame">
+                    <div class="camera-frame" style="position: relative; overflow: hidden;">
 
                         <video
                             id="webcam"
                             autoplay
                             playsinline
                             muted
-                            style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;"
+                            style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block;"
                         ></video>
 
                         <img
                             src=""
                             alt="Live hand gesture camera feed"
                             id="camera-feed"
+                            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: none;"
                         >
 
                         <canvas

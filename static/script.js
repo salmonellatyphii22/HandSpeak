@@ -160,18 +160,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
 
-            // Keep <video> painted at near-zero opacity so browsers never
-            // pause decoding and return black frames after ~2 seconds
-            webcam.style.display = "block";
-            webcam.style.position = "fixed";
-            webcam.style.bottom = "0";
-            webcam.style.right = "0";
-            webcam.style.width = "160px";
-            webcam.style.height = "90px";
-            webcam.style.opacity = "0.01";
-            webcam.style.pointerEvents = "none";
-            webcam.style.zIndex = "-1";
-
             const stream =
                 await navigator.mediaDevices.getUserMedia({
                     video: {
@@ -196,7 +184,7 @@ document.addEventListener("DOMContentLoaded", () => {
             await webcam.play();
 
             cameraStatus.textContent =
-                "Camera active";
+                "Warming up AI...";
 
             statusDot.classList.remove(
                 "offline"
@@ -250,9 +238,10 @@ document.addEventListener("DOMContentLoaded", () => {
         processing = true;
 
         const controller = new AbortController();
+        // Allow up to 30s for Render's initial MediaPipe model warmup
         const timeoutId = setTimeout(
             () => controller.abort(),
-            8000
+            30000
         );
 
         try {
